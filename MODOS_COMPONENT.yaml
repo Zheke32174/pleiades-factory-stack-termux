@@ -1,0 +1,39 @@
+apiVersion: modos.pleiades/v1alpha1
+kind: Component
+metadata:
+  name: pleiades-factory-termux-adapter
+  repository: Zheke32174/pleiades-factory-stack-termux
+  visibility: public
+  lifecycle: experimental
+  defaultBranch: main
+spec:
+  roles:
+    - android-factory-adapter
+    - mobile-build-helper
+    - edge-candidate-producer
+  authority: local-enforcement
+  inputs:
+    - bounded-build-objectives
+    - source-snapshots
+    - toolchain-profiles
+  outputs:
+    - candidate-artifacts
+    - build-receipts
+    - edge-evaluation-results
+  capabilitiesProvided:
+    - factory.edge.build
+    - artifact.mobile.propose
+    - evaluation.edge.execute
+  capabilitiesRequired:
+    - workspace.isolated
+    - package.install.scoped
+    - artifact.write.proposed
+    - audit.append
+  dataClasses:
+    - public
+    - private
+    - internal
+    - untrusted
+  failurePolicy: quarantine
+  promotionPolicy: evidence-gated
+  notes: Mobile Factory output remains a candidate and cannot mutate canonical state or self-promote.
