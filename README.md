@@ -6,13 +6,23 @@ It does not maintain a second tool inventory, silently clone every upstream proj
 
 ## What the adapter does
 
-1. Locates a checked-out canonical `pleiades-factory-stack`.
-2. Reads its versioned tool catalog.
-3. Selects only enabled entries carrying the `termux` profile.
-4. Generates a private local adapter catalog.
-5. Delegates validation, lock generation, and pinned source synchronization to the canonical toolchain.
+1. Locates a Git checkout of the canonical `pleiades-factory-stack` repository.
+2. Verifies its exact origin, commit, clean working-tree state, catalog hash, toolchain hash, and component-contract hash.
+3. Reads its versioned tool catalog.
+4. Selects only enabled entries carrying the `termux` profile.
+5. Generates a private local adapter catalog bound to that canonical source identity.
+6. Delegates validation, lock generation, and pinned source synchronization to the canonical toolchain.
 
 Catalog inclusion permits source acquisition only. It does not prove that a project builds on Android, authorize execution, approve a license conclusion, or make the project a Pleiades capability.
+
+## Two independent lock layers
+
+The adapter distinguishes two kinds of provenance:
+
+- `canonical-source.json` pins the exact reviewed `pleiades-factory-stack` commit and the SHA-256 hashes of its catalog, toolchain, and component declaration.
+- `termux.lock.json` pins the selected third-party projects to exact upstream commits.
+
+A reviewed upstream-tool lock cannot compensate for a substituted or dirty canonical catalog. Conversely, pinning the factory-stack source does not approve or execute any listed third-party project.
 
 ## Prerequisites
 
@@ -20,8 +30,6 @@ Catalog inclusion permits source acquisition only. It does not prove that a proj
 pkg install python git
 
 git clone https://github.com/Zheke32174/pleiades-factory-stack.git
-# Until the canonical manifest-driven PR is merged, check out its review branch.
-
 git clone https://github.com/Zheke32174/pleiades-factory-stack-termux.git
 ```
 
@@ -31,15 +39,23 @@ The repositories should be siblings, or set:
 export PLEIADES_FACTORY_STACK_ROOT="$HOME/src/pleiades-factory-stack"
 ```
 
+The canonical checkout must have the exact `Zheke32174/pleiades-factory-stack` origin and a clean working tree before adapter state can be generated.
+
 ## Workflow
 
-Preview the Termux source profile without cloning anything:
+Preview the clean canonical Termux source profile without cloning anything:
 
 ```bash
 bash bootstrap-tools.sh plan
 ```
 
-Resolve exact upstream commits into the private local lock:
+After reviewing the canonical commit and reported hashes, pin that source identity:
+
+```bash
+bash bootstrap-tools.sh pin
+```
+
+Resolve exact upstream commits into the private local tool lock:
 
 ```bash
 bash bootstrap-tools.sh lock
@@ -51,23 +67,24 @@ Synchronize the pinned source checkouts:
 bash bootstrap-tools.sh sync
 ```
 
-Unpinned source acquisition requires the explicit escape hatch:
+Unpinned upstream source acquisition remains an explicit research escape hatch:
 
 ```bash
 bash bootstrap-tools.sh sync --floating
 ```
 
-That mode is useful for research but is not reproducible and should not feed a promoted factory artifact.
+That flag does **not** bypass the canonical factory-source pin. It changes only the selected upstream-project lock requirement and should not feed a promoted factory artifact.
 
 ## Commands
 
 | Command | Effect |
 |---|---|
-| `validate` | Validate the canonical catalog and local lock |
+| `validate` | Validate the clean canonical catalog and any local tool lock |
 | `plan` | Print the selected Termux source profile |
-| `lock` | Resolve exact upstream commit SHAs |
-| `sync` | Clone or update only the selected pinned commits |
-| `status` | Show canonical checkout, generated catalog, lock, and tools paths |
+| `pin` | Record the exact clean canonical repository commit and content hashes |
+| `lock` | Resolve exact upstream commit SHAs; requires a matching source pin |
+| `sync` | Clone or update selected sources; requires a matching source pin |
+| `status` | Non-mutating report of source identity, pin match, locks, paths, and tools |
 
 No command in this repository executes a cloned third-party project.
 
@@ -77,6 +94,7 @@ Private generated state defaults to:
 
 ```text
 ~/.local/state/pleiades-factory-termux/
+├── canonical-source.json
 ├── termux.catalog.json
 ├── termux.lock.json
 └── tools-state.json
@@ -90,23 +108,26 @@ Source checkouts default to the `PLEIADES_TOOLS` path used by `pleiades-termux`,
 
 State and checkouts must not be committed.
 
-## Why this replaces the previous bootstrap
+## Refusal behavior
 
-The previous script carried a second hardcoded list of dozens of repositories, cloned floating default branches, swallowed failures, and reported completion based on directory count. That allowed the Android list to drift from the canonical catalog and provided no reproducible provenance.
+The adapter fails visibly when:
 
-The adapter now fails visibly when:
-
-- the canonical checkout is absent;
-- the catalog schema is wrong;
-- no Termux-profile tools exist;
-- a lock is missing for pinned synchronization;
+- the canonical Git checkout is absent;
+- its origin is not `Zheke32174/pleiades-factory-stack`;
+- its working tree is dirty;
+- its catalog schema is wrong;
+- no enabled Termux-profile tools exist;
+- the canonical-source pin is missing or no longer matches;
+- an upstream lock is missing for pinned synchronization;
 - canonical synchronization detects origin, dirty-tree, or commit mismatches.
+
+`status` is deliberately non-mutating and can report a dirty checkout or stale/missing source pin without rewriting generated state.
 
 ## Security boundary
 
 - Source acquisition only; no implicit build or execution.
-- Exact commit locks are the normal path.
-- Generated adapter state is private.
+- Exact canonical-source and upstream-tool identities are separate normal-path gates.
+- Generated adapter state is private and atomically replaced.
 - No API keys or credentials are handled.
 - No `sudo`, systemd, containers, or root assumptions.
 - No direct Pleiades authority-broker access.
