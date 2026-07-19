@@ -1,56 +1,87 @@
-name: Release
+name: source release
 
 on:
   push:
-    branches: [ main, master ]
-    tags: [ 'v*' ]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version/tag, for example v0.1.0'
-        required: false
-        default: 'v0.1.0'
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
-  packages: read
+
+concurrency:
+  group: source-release
+  cancel-in-progress: false
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          show-progress: false
 
-      - name: Resolve version
-        id: version
-        shell: bash
+      - name: Validate immutable version identity
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          if [ -z "$VERSION" ]; then VERSION="v0.1.0"; fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          test "$GITHUB_REF_NAME" = "v$VERSION"
 
-      - name: Write release notes
-        shell: bash
+      - name: Validate adapter and public history
         run: |
-          cat > RELEASE_NOTES.md <<EOF
-          # pleiades-factory-stack-termux ${{ steps.version.outputs.version }}
+          python3 -m py_compile scripts/termux-adapter.py ci/scan_public_repo.py scripts/write_spdx_sbom.py
+          python3 -m unittest discover -s tests -v
+          bash -n bootstrap-tools.sh scripts/pleiades-factory-tools.sh scripts/package_source.sh
+          python3 ci/scan_public_repo.py
 
-          Public showcase release for pleiades-factory-stack-termux.
+      - name: Build and verify source assets
+        run: |
+          bash scripts/package_source.sh dist
+          cd dist
+          sha256sum -c SHA256SUMS.txt
 
-          GitHub Package:
-          ghcr.io/zheke32174/pleiades-factory-stack-termux:latest
+      - name: Write download-first notes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          version = Path("VERSION").read_text(encoding="utf-8").strip()
+          archive = f"pleiades-factory-stack-termux-{version}.tar.gz"
+          notes = f"""# Pleiades Factory Stack Termux Adapter {version}
 
-          GitHub provides source ZIP and source tarball assets automatically on this Release.
-          EOF
+## Download
 
-      - name: Create or update GitHub Release
+**Download `{archive}` from the Assets section below.**
+
+This release contains the thin Termux adapter source only. It does not contain the canonical catalog, canonical factory checkout, third-party source, generated adapter state, credentials, or execution authorization.
+
+Also download `SHA256SUMS.txt`, the SPDX 2.3 JSON inventory, and the exact-commit build receipt.
+
+Install the canonical `pleiades-factory-stack` checkout separately, keep both repositories as siblings or set `PLEIADES_FACTORY_STACK_ROOT`, then begin with `bash bootstrap-tools.sh plan`.
+"""
+          Path("dist/RELEASE-NOTES.md").write_text(notes, encoding="utf-8")
+          PY
+
+      - name: Refuse release overwrite
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release edit "$VERSION" --target "$GITHUB_SHA" --title "pleiades-factory-stack-termux $VERSION" --notes-file RELEASE_NOTES.md
-          else
-            gh release create "$VERSION" --target "$GITHUB_SHA" --title "pleiades-factory-stack-termux $VERSION" --notes-file RELEASE_NOTES.md
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $GITHUB_REF_NAME already exists"
+            exit 1
           fi
+
+      - name: Publish immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.tar.gz \
+            dist/*.spdx.json \
+            dist/*.build-receipt.json \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Pleiades Factory Stack Termux Adapter ${GITHUB_REF_NAME#v}" \
+            --notes-file dist/RELEASE-NOTES.md \
+            --verify-tag
