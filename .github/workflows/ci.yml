@@ -43,10 +43,14 @@ jobs:
           grep -Fq 'choices=["validate", "plan", "pin", "lock", "sync", "status"]' scripts/termux-adapter.py
           grep -Fq 'Two independent lock layers' README.md
           grep -Fq 'Source acquisition only' README.md
+          grep -Fq 'authority: none' MODOS_COMPONENT.yaml
+          grep -Fq 'capabilitiesProvided: []' MODOS_COMPONENT.yaml
+          grep -Fq 'promotionPolicy: never-promote' MODOS_COMPONENT.yaml
           test "$(cat VERSION)" = "0.2.0"
           test -f LICENSE
           test -f SECURITY.md
           test -f PRIVACY.md
+          test -f THIRD_PARTY_NOTICES.md
       - name: Scan public tree and reachable Git history
         run: python3 ci/scan_public_repo.py
       - name: Secret-shaped file guard
@@ -76,6 +80,20 @@ jobs:
         run: |
           cd dist-one
           sha256sum -c SHA256SUMS.txt
+      - name: Verify receipt records source-only authority
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          version = Path("VERSION").read_text(encoding="utf-8").strip()
+          receipt = json.loads(Path(f"dist-one/pleiades-factory-stack-termux-{version}.build-receipt.json").read_text(encoding="utf-8"))
+          assert receipt["contains_canonical_catalog"] is False
+          assert receipt["contains_third_party_source"] is False
+          assert receipt["contains_runtime_state"] is False
+          assert receipt["contains_credentials"] is False
+          assert receipt["execution_authorized"] is False
+          PY
       - name: Upload exact-head source candidate
         uses: actions/upload-artifact@v4
         with:
