@@ -1,0 +1,40 @@
+apiVersion: modos.pleiades/v1alpha1
+kind: Component
+metadata:
+  name: pleiades-factory-termux-adapter
+  repository: Zheke32174/pleiades-factory-stack-termux
+  visibility: public
+  lifecycle: experimental
+  defaultBranch: main
+spec:
+  roles:
+    - canonical-catalog-termux-adapter
+    - source-profile-filter
+    - source-synchronization-client
+  authority: none
+  inputs:
+    - reviewed-canonical-factory-source
+    - canonical-tool-catalog
+    - explicit-termux-profile-selection
+    - reviewed-upstream-source-lock
+  outputs:
+    - generated-termux-catalog
+    - canonical-source-pin
+    - upstream-source-lock
+    - source-synchronization-receipt
+    - local-source-checkouts
+  capabilitiesProvided: []
+  capabilitiesRequired:
+    - filesystem.user.private-state
+    - network.git.source-fetch
+  dataClasses:
+    - public
+    - private
+    - untrusted
+  failurePolicy: hard-fail
+  promotionPolicy: never-promote
+  notes: >-
+    This adapter filters and synchronizes source only. It does not build or
+    execute cataloged projects, approve licenses, produce promoted artifacts,
+    mutate canonical state, or grant Pleiades capability authority. Floating
+    source acquisition is exploratory and cannot enter promoted work.
