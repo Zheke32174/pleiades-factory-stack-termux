@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile
+        run: python3 -m py_compile scripts/termux-adapter.py tests/test_adapter.py
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Shell syntax
+        run: |
+          bash -n bootstrap-tools.sh
+          bash -n scripts/pleiades-factory-tools.sh
+      - name: Adapter boundary invariants
+        run: |
+          set -euo pipefail
+          ! grep -RInE 'git clone|git pull|paper2code-fetch|hermes-evolve|continual-harness \[args' bootstrap-tools.sh scripts
+          grep -Fq 'CANONICAL_REPOSITORY = "Zheke32174/pleiades-factory-stack"' scripts/termux-adapter.py
+          grep -Fq 'SOURCE_SCHEMA = "pleiades.factory-termux-source/v1"' scripts/termux-adapter.py
+          grep -Fq 'canonical_catalog_sha256' scripts/termux-adapter.py
+          grep -Fq 'canonical_toolchain_sha256' scripts/termux-adapter.py
+          grep -Fq 'execution_authorized": False' scripts/termux-adapter.py
+          grep -Fq 'choices=["validate", "plan", "pin", "lock", "sync", "status"]' scripts/termux-adapter.py
+          grep -Fq 'Two independent lock layers' README.md
+          grep -Fq 'Source acquisition only' README.md
+      - name: Secret-shaped file guard
+        run: |
+          set -euo pipefail
+          ! find . -type f -not -path './.git/*' \( -name '*.key' -o -name '*.pem' -o -name '.env' \) -print -quit | grep -q .
